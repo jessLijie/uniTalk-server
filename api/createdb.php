@@ -61,10 +61,14 @@ $insertUsers = "INSERT INTO users (id, username, email, password, role) VALUES
 ";
 mysqli_query($con, $insertUsers);
 
-$insertTalks = "INSERT INTO talks (id, user_id, title, content, category, image, posted_datetime, likes, status) VALUES
-(1, 1, 'Talk Title 1', 'This is the content of talk 1.', 'Technology', 'image1.jpg', '2024-06-09 12:34:56', 0, 'pending'),
-(2, 2, 'Talk Title 2', 'This is the content of talk 2.', 'Fashion', 'image2.jpg', '2024-06-09 13:45:07', 0, 'pending'),
-(3, 3, 'Talk Title 3', 'This is the content of talk 3.', 'Sports', 'image3.jpg', '2024-06-09 14:56:18', 0, 'pending');
+$insertTalks = "INSERT INTO unitalk.talks (user_id, title, content, category, image, posted_datetime, likes, status) VALUES
+(1, 'Talk Title 1', 'This is the content of talk 1.', 'Technology', 'image1.jpg', '2024-06-09 12:34:56', 0, 'pending'),
+(2, 'Talk Title 2', 'This is the content of talk 2.', 'Fashion', 'image2.jpg', '2024-06-09 13:45:07', 0, 'pending'),
+(3, 'Talk Title 3', 'This is the content of talk 3.', 'Sports', 'image3.jpg', '2024-06-09 14:56:18', 0, 'pending'),
+(4, 'Talk Title 4', 'This is the content of talk 4.', 'Technology', 'image4.jpg', '2024-06-09 15:01:23', 0, 'pending'),
+(5, 'Talk Title 5', 'This is the content of talk 5.', 'Fashion', 'image5.jpg', '2024-06-09 16:12:34', 0, 'pending'),
+(6, 'Talk Title 6', 'This is the content of talk 6.', 'Sports', 'image6.jpg', '2024-06-09 17:23:45', 0, 'pending'),
+(7, 'Talk Title 7', 'This is the content of talk 7.', 'Technology', 'image7.jpg', '2024-06-09 18:34:56', 0, 'pending');
 ";
 mysqli_query($con, $insertTalks);
 

@@ -43,4 +43,26 @@ $app->get('/userList', function (Request $request, Response $response, $args) {
     }
 
 });
+
+$app->get('/userCount', function (Request $request, Response $response, $args) {
+    $db = new db();
+    $con = $db->connect();
+
+    try {
+        $query = "SELECT COUNT(*) AS total FROM users";
+        $stmt = $con->prepare($query);
+        $stmt->execute();
+        $userCount = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        $response->getBody()->write(json_encode($userCount));
+    } catch (PDOException $e) {
+        $error = [
+            "message" => $e->getMessage()
+        ];
+        $response->getBody()->write(json_encode($error));
+        return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+    }
+
+    return $response->withHeader('Content-Type', 'application/json');
+});
 ?>

@@ -90,4 +90,93 @@ $app->delete('/talks/{id}/delete', function (Request $request, Response $respons
         $con = null;
     }
 });
+
+$app->get('/talks/recent', function (Request $request, Response $response, $args) {
+    $db = new db();
+    $con = $db->connect();
+
+    try {
+        $query = "SELECT * FROM talks ORDER BY posted_datetime DESC LIMIT 5";
+        $stmt = $con->prepare($query);
+        $stmt->execute();
+        $recentTalks = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $response->getBody()->write(json_encode($recentTalks));
+        return $response->withStatus(200)->withHeader('Content-Type', 'application/json');
+    } catch (PDOException $e) {
+        $error = [
+            "message" => $e->getMessage()
+        ];
+        $response->getBody()->write(json_encode($error));
+        return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+    } finally {
+        $con = null;
+    }
+});
+
+$app->get('/categoryCounts', function (Request $request, Response $response, $args) {
+    $db = new db();
+    $con = $db->connect();
+
+    try {
+        $query = "SELECT category, COUNT(*) AS total FROM talks GROUP BY category";
+        $stmt = $con->prepare($query);
+        $stmt->execute();
+        $categoryCounts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $categoryIcons = [
+            'Food' => ['component' => 'fa fa-cutlery', 'background' => 'dark'],
+            'Technology' => ['component' => 'ni ni-world-2', 'background' => 'dark'],
+            'Fashion' => ['component' => 'fa fa-heart', 'background' => 'dark'],
+            'Sports' => ['component' => 'fa fa-futbol-o', 'background' => 'dark'],
+            'Transport' => ['component' => 'fa fa-bus', 'background' => 'dark'],
+        ];
+
+        $categories = [];
+        foreach ($categoryCounts as $categoryCount) {
+            $category = $categoryCount['category'];
+            $icon = isset($categoryIcons[$category]) ? $categoryIcons[$category] : ['component' => '', 'background' => ''];
+            $categories[] = [
+                'icon' => $icon,
+                'label' => $category,
+                'description' => 'Total <strong>' . $categoryCount['total'] . '</strong> talks'
+            ];
+        }
+
+        $response->getBody()->write(json_encode($categories));
+    } catch (PDOException $e) {
+        // Handle exceptions
+        $error = [
+            "message" => $e->getMessage()
+        ];
+        $response->getBody()->write(json_encode($error));
+        return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+    }
+
+    return $response->withHeader('Content-Type', 'application/json');
+});
+
+$app->get('/talkCount', function (Request $request, Response $response, $args) {
+    $db = new db();
+    $con = $db->connect();
+
+    try {
+        $query = "SELECT COUNT(*) AS total FROM talks";
+        $stmt = $con->prepare($query);
+        $stmt->execute();
+        $userCount = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        $response->getBody()->write(json_encode($userCount));
+    } catch (PDOException $e) {
+        $error = [
+            "message" => $e->getMessage()
+        ];
+        $response->getBody()->write(json_encode($error));
+        return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+    }
+
+    return $response->withHeader('Content-Type', 'application/json');
+});
+
+
 ?>
