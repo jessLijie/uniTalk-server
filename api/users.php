@@ -6,6 +6,7 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 $app->get('/userList', function (Request $request, Response $response, $args) {
     $params = $request->getQueryParams();
     $search_val = $params['search_val'] ?? null;
+    $user_id = $params['user_id'] ?? null;
     $db = new db();
     $con = $db->connect();
 
@@ -19,7 +20,12 @@ $app->get('/userList', function (Request $request, Response $response, $args) {
                 $stmt = $con->prepare($query);
                 $stmt->bindValue("searchVal", $search_val);
             }
-        } else {
+        } elseif ($user_id) {
+            $query = "SELECT * FROM users WHERE id=:user_id";
+            $stmt = $con->prepare($query);
+            $stmt->bindValue("user_id", $user_id);
+        } 
+        else {
             $query = "SELECT * FROM users";
             $stmt = $con->prepare($query);
         }
