@@ -10,6 +10,6 @@ header("Access-Control-Allow-Headers: Content-Type, Authorization");
 require './users.php';
 require './signin.php';
 require './signup.php';
-
+require './talks.php';
 $app->run();
 ?>
