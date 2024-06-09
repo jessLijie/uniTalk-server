@@ -6,8 +6,6 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 $app->get('/userList', function (Request $request, Response $response, $args) {
     $params = $request->getQueryParams();
     $search_val = $params['search_val'] ?? null;
-
-
     $db = new db();
     $con = $db->connect();
 

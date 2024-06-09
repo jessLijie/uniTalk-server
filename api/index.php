@@ -8,6 +8,7 @@ header("Access-Control-Allow-Headers: Content-Type, Authorization");
 
 // Include route files
 require './users.php';
+require './signin.php';
 
 $app->run();
 ?>
