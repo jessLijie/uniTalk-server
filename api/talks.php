@@ -178,5 +178,263 @@ $app->get('/talkCount', function (Request $request, Response $response, $args) {
     return $response->withHeader('Content-Type', 'application/json');
 });
 
+$app->post('/talks/create', function (Request $request, Response $response, $args) {
+    $db = new db();
+    $con = $db->connect();
+    
+    $data = $request->getParsedBody();
+    try {
+        $userId = $data['userId']??'';
+        $title = $data['title']??'';
+        $topic = $data['topic']??'';
+        $content = $data['content']??'';
+        $image = $request->getUploadedFiles()['image'];
+        
+        // Handling image upload
+        $directory = __DIR__ . '/uploads';
+        $filename = moveUploadedFile($directory, $image);
 
+        $query = "INSERT INTO talks (user_id, title, content, category, image, posted_datetime, status)
+                  VALUES (:user_id, :title, :content, :category, :image, NOW(), 'pending')";
+        $stmt = $con->prepare($query);
+        $stmt->bindValue(":user_id", $userId); // Assuming a static user ID for now
+        $stmt->bindValue(":title", $title);
+        $stmt->bindValue(":content", $content);
+        $stmt->bindValue(":category", $topic);
+        $stmt->bindValue(":image", $filename);
+
+        $stmt->execute();
+        
+        $response->getBody()->write(json_encode(["message" => "Talk created successfully!"]));
+        return $response->withHeader('Content-Type', 'application/json')->withStatus(201);
+
+    } catch (PDOException $e) {
+        $error = [
+            "message" => $e->getMessage()
+        ];
+        $response->getBody()->write(json_encode($error));
+        return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+    } finally {
+        $con = null;
+    }
+});
+
+function moveUploadedFile($directory, $uploadedFile) {
+    $extension = pathinfo($uploadedFile->getClientFilename(), PATHINFO_EXTENSION);
+    $basename = bin2hex(random_bytes(8)); // see http://php.net/manual/en/function.random-bytes.php
+    $filename = sprintf('%s.%0.8s', $basename, $extension);
+
+    $uploadedFile->moveTo($directory . DIRECTORY_SEPARATOR . $filename);
+
+    return $filename;
+}
+
+$app->get('/talks', function (Request $request, Response $response, $args) {
+    $db = new db();
+    $con = $db->connect();
+
+    try {
+        $query = "SELECT * FROM talks ORDER BY posted_datetime DESC";
+        $stmt = $con->query($query);
+        $talks = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Add the base URL to the image path
+        $baseUrl = 'http://localhost/PHP/uniTalk-server/api/uploads/';
+        foreach ($talks as &$talk) {
+            if ($talk['image']) {
+                $talk['image'] = $baseUrl . $talk['image'];
+            }
+        }
+
+        $response->getBody()->write(json_encode($talks));
+        return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
+
+    } catch (PDOException $e) {
+        $error = [
+            "message" => $e->getMessage()
+        ];
+        $response->getBody()->write(json_encode($error));
+        return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+    } finally {
+        $con = null;
+    }
+});
+
+$app->get('/talks/{id}', function (Request $request, Response $response, $args) {
+    $id = $args['id'];
+    $db = new db();
+    $con = $db->connect();
+
+    try {
+        $query = "SELECT * from talks WHERE id = :id";
+        $stmt = $con->prepare($query);
+        $stmt->bindValue(":id", $id);
+        $stmt->execute();
+        $talk = $stmt->fetch();
+
+        // Add the base URL to the image path
+        $baseUrl = 'http://localhost/PHP/uniTalk-server/api/uploads/';
+        if ($talk && $talk['image']) {
+            $talk['image'] = $baseUrl . $talk['image'];
+        }
+
+        if ($talk) {
+            $response->getBody()->write(json_encode($talk));
+            return $response->withStatus(200)->withHeader('Content-Type', 'application/json');
+        } else {
+            $response->getBody()->write(json_encode(["message" => "Talk not found"]));
+            return $response->withStatus(404)->withHeader('Content-Type', 'application/json');
+        }
+    } catch (PDOException $e) {
+        $error = [
+            "message" => $e->getMessage()
+        ];
+        $response->getBody()->write(json_encode($error));
+        return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+    } finally {
+        $con = null;
+    }
+});
+
+$app->put('/talks/{action}/{id}/{like}', function (Request $request, Response $response, $args) {
+
+    $talkId = $args['id'];
+    $talkLike = $args['like'];
+    $action = $args['action'];
+
+    $db = new db();
+    $con = $db->connect();
+
+    $data = $request->getParsedBody();
+
+    $userId = $data['userId']??'';
+    try {
+        $query = "UPDATE talks SET likes = :talkLike WHERE id = :id";
+        $stmt = $con->prepare($query);
+        if($action === "add"){
+        $stmt->bindValue("talkLike", $talkLike+1);}
+        else{
+        $stmt->bindValue("talkLike", $talkLike-1);
+        }
+        $stmt->bindValue("id", $talkId);
+
+        $stmt->execute();
+        
+        if ($action === "add") {
+            $insertQuery = "INSERT INTO likes (user_id, talk_id) VALUES (:user_id, :talk_id)";
+            $insertStmt = $con->prepare($insertQuery);
+            $insertStmt->bindValue("user_id", $userId);
+            $insertStmt->bindValue("talk_id", $talkId);
+
+            $insertStmt->execute();
+        } else {
+            $deleteQuery = "DELETE FROM likes WHERE user_id = :user_id AND talk_id = :talk_id";
+            $deleteStmt = $con->prepare($deleteQuery);
+            $deleteStmt->bindValue("user_id", $userId);
+            $deleteStmt->bindValue("talk_id", $talkId);
+
+            $deleteStmt->execute();
+        }
+        
+        $response->getBody()->write(json_encode(["message" => "Talk like update successfully"]));
+        return $response->withHeader('Content-Type', 'application/json');
+
+    } catch (PDOException $e) {
+        $error = [
+            "message" => $e->getMessage()
+        ];
+        $response->getBody()->write(json_encode($error));
+        return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+    }
+});
+    
+$app->get('/talks/check-like/{userId}/{talkId}', function (Request $request, Response $response, $args) {
+        $userId = $args['userId'];
+        $talkId = $args['talkId'];
+    
+        $db = new db();
+        $con = $db->connect();
+    
+        try {
+            $query = "SELECT COUNT(*) as count FROM likes WHERE user_id = :userId AND talk_id = :talkId";
+            $stmt = $con->prepare($query);
+            $stmt->bindValue("userId", $userId);
+            $stmt->bindValue("talkId", $talkId);
+            $stmt->execute();
+    
+            $result = $stmt->fetch();
+            $liked = $result['count'] > 0;
+    
+            $response->getBody()->write(json_encode(["liked" => $liked]));
+            return $response->withHeader('Content-Type', 'application/json');
+        } catch (PDOException $e) {
+            $error = ["message" => $e->getMessage()];
+            $response->getBody()->write(json_encode($error));
+            return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+        }
+});
+
+$app->post('/talks/comment', function (Request $request, Response $response, $args) {
+        $db = new db();
+        $con = $db->connect();
+        
+        $data = $request->getParsedBody();
+        try {
+            $userId = $data['userId'] ?? '';
+            $talkId = $data['talkId'] ?? '';
+            $comment = $data['comment'] ?? '';
+            $parentId = $data['parentId'] ?? '0';
+    
+            // Assuming the 'comments' table exists with the correct structure
+            $query = "INSERT INTO comments (user_id, talk_id, comment_content, parent_id, posted_datetime)
+                      VALUES (:user_id, :talk_id, :comment_content, :parent_id, NOW())";
+            $stmt = $con->prepare($query);
+            $stmt->bindValue(":user_id", $userId);
+            $stmt->bindValue(":talk_id", $talkId);
+            $stmt->bindValue(":comment_content", $comment);
+            $stmt->bindValue(":parent_id", $parentId);
+    
+            $stmt->execute();
+            
+            $response->getBody()->write(json_encode(["message" => "Comment added successfully!"]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(201);
+    
+        } catch (PDOException $e) {
+            $error = [
+                "message" => $e->getMessage()
+            ];
+            $response->getBody()->write(json_encode($error));
+            return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+        } finally {
+            $con = null;
+        }
+});
+    
+$app->get('/talks/{id}/comment', function (Request $request, Response $response, $args) {
+    $id = $args['id'];
+    $db = new db();
+    $con = $db->connect();
+    
+    try {
+        // Assuming the 'comments' table exists with the correct structure
+        $query = "SELECT * FROM comments WHERE id = :id ORDER BY posted_datetime DESC";
+        $stmt = $con->prepare($query);
+        $stmt->bindValue(":id", $id);
+
+        $stmt->execute();
+        $comment = $stmt->fetch();
+        
+        $response->getBody()->write(json_encode($comment));
+        return $response->withHeader('Content-Type', 'application/json')->withStatus(201);
+
+    } catch (PDOException $e) {
+        $error = [
+            "message" => $e->getMessage()
+        ];
+        $response->getBody()->write(json_encode($error));
+        return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+    } finally {
+        $con = null;
+    }
+}); 
 ?>

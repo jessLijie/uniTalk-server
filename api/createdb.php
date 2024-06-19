@@ -3,7 +3,7 @@ include ("./config.php");
 //  $db = new db();
 //     $con = $db->connect();
 
-$con = mysqli_connect("localhost", "root", "jkty12138", "unitalk");
+$con = mysqli_connect("localhost", "root", "aeiou12345", "unitalk");
 if (!$con) {
     die('Could not connect: ' . mysqli_connect_error());
 }
