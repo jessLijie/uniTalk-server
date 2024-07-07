@@ -29,6 +29,7 @@ $createTalk = "CREATE TABLE talks (
     image VARCHAR(255),
     posted_datetime DATETIME,
     likes INT DEFAULT 0,
+    comments INT DEFAULT 0,
     status VARCHAR(50) DEFAULT 'pending'
     );";
 mysqli_query($con, $createTalk);

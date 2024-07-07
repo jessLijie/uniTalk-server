@@ -234,7 +234,7 @@ $app->get('/talks', function (Request $request, Response $response, $args) {
     $con = $db->connect();
 
     try {
-        $query = "SELECT * FROM talks ORDER BY posted_datetime DESC";
+        $query = "SELECT * FROM talks WHERE status = 'approved' ORDER BY posted_datetime DESC ";
         $stmt = $con->query($query);
         $talks = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -355,6 +355,7 @@ $app->get('/talks/check-like/{userId}/{talkId}', function (Request $request, Res
         $db = new db();
         $con = $db->connect();
     
+        $data = $request->getParsedBody();
         try {
             $query = "SELECT COUNT(*) as count FROM likes WHERE user_id = :userId AND talk_id = :talkId";
             $stmt = $con->prepare($query);
@@ -373,6 +374,33 @@ $app->get('/talks/check-like/{userId}/{talkId}', function (Request $request, Res
             return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
         }
 });
+    
+$app->get('/talks/check-comment/{userId}/{talkId}', function (Request $request, Response $response, $args) {
+    $userId = $args['userId'];
+    $talkId = $args['talkId'];
+
+    $db = new db();
+    $con = $db->connect();
+
+    $data = $request->getParsedBody();
+    try {
+        $query = "SELECT COUNT(*) as count FROM comments WHERE user_id = :userId AND talk_id = :talkId";
+        $stmt = $con->prepare($query);
+        $stmt->bindValue("userId", $userId);
+        $stmt->bindValue("talkId", $talkId);
+        $stmt->execute();
+
+        $result = $stmt->fetch();
+        $comment = $result['count'] > 0;
+
+        $response->getBody()->write(json_encode(["comment" => $comment]));
+        return $response->withHeader('Content-Type', 'application/json');
+    } catch (PDOException $e) {
+        $error = ["message" => $e->getMessage()];
+        $response->getBody()->write(json_encode($error));
+        return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+    }
+});
 
 $app->post('/talks/comment', function (Request $request, Response $response, $args) {
         $db = new db();
@@ -383,8 +411,20 @@ $app->post('/talks/comment', function (Request $request, Response $response, $ar
             $userId = $data['userId'] ?? '';
             $talkId = $data['talkId'] ?? '';
             $comment = $data['comment'] ?? '';
+            $commentValue = $data['commentValue'] ?? '0';
             $parentId = $data['parentId'] ?? '0';
     
+            $commentquery = "UPDATE talks SET comments = :commentValue WHERE id = :id";
+            $stmt = $con->prepare($commentquery);
+            $stmt->bindValue("commentValue", $commentValue+1);
+            $stmt->bindValue("id", $talkId);
+            $stmt->execute();
+
+            $updatequery = "UPDATE comments SET child = 1 WHERE id = :id";
+            $stmt = $con->prepare($updatequery);
+            $stmt->bindValue("id", $parentId);
+            $stmt->execute();
+
             // Assuming the 'comments' table exists with the correct structure
             $query = "INSERT INTO comments (user_id, talk_id, comment_content, parent_id, posted_datetime)
                       VALUES (:user_id, :talk_id, :comment_content, :parent_id, NOW())";
@@ -417,15 +457,15 @@ $app->get('/talks/{id}/comment', function (Request $request, Response $response,
     
     try {
         // Assuming the 'comments' table exists with the correct structure
-        $query = "SELECT * FROM comments WHERE id = :id ORDER BY posted_datetime DESC";
+        $query = "SELECT * FROM comments WHERE talk_id = :id ORDER BY posted_datetime DESC";
         $stmt = $con->prepare($query);
         $stmt->bindValue(":id", $id);
 
         $stmt->execute();
-        $comment = $stmt->fetch();
+        $comments = $stmt->fetchAll();  // Fetch all comments
         
-        $response->getBody()->write(json_encode($comment));
-        return $response->withHeader('Content-Type', 'application/json')->withStatus(201);
+        $response->getBody()->write(json_encode($comments));
+        return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
 
     } catch (PDOException $e) {
         $error = [
