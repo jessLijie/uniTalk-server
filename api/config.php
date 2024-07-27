@@ -4,7 +4,7 @@ class db
     // Properties
     private $host = 'localhost';
     private $user = 'root';
-    private $password = 'aeiou12345';
+    private $password = 'ngqianhui0594';
     private $dbname = 'unitalk';
 
 

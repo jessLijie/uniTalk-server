@@ -6,6 +6,13 @@ header("Access-Control-Allow-Headers: Content-Type, Authorization");
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
+$app->options('/{routes:.+}', function ($request, $response, $args) {
+    return $response->withHeader('Access-Control-Allow-Origin', '*')
+                    ->withHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Accept, Origin, Authorization')
+                    ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+                    ->withStatus(200);
+});
+
 $app->get('/talkList', function (Request $request, Response $response, $args) {
     $params = $request->getQueryParams();
     $status = $params['status'] ?? null;
@@ -437,4 +444,95 @@ $app->get('/talks/{id}/comment', function (Request $request, Response $response,
         $con = null;
     }
 }); 
+
+$app->get('/talklist/{userid}', function(Request $request, Response $response, $args){
+    $userid = $args['userid'];
+    $db = new db();
+    $con = $db->connect();
+
+    try{
+        $query = "SELECT * FROM talks WHERE user_id = :userid";
+        $stmt = $con->prepare($query);
+        $stmt -> bindValue(":userid", $userid);
+        $stmt -> execute();
+        $talk = $stmt -> fetchALL(PDO::FETCH_ASSOC);
+
+        if($talk){
+            $response -> getBody() -> write(json_encode($talk));
+            return $response -> withStatus(200) -> withHeader('Content-Type', 'application/json');
+        }
+    }catch(PDOexception $e){
+        $error = [
+            "message" => $e -> getMessage()
+        ];
+        $response -> getBody() -> write(json_encode($error));
+        return $response -> withStatus(500)->writeHeader('Content-Type', 'application/json');
+    }finally{
+        $con = null;
+    }
+});
+
+$app->put('/talks/{userid}/{talkid}', function(Request $request, Response $response, $args){
+    $userid = $args['userid'];
+    $talkid = $args['talkid'];
+    $db = new db();
+    $con = $db->connect();
+
+    $data = $request->getParsedBody();
+    $title = $data['title'] ?? '';
+    $content = $data['content'] ?? '';
+    $category = $data['category'] ?? '';
+    
+
+    try{
+        $query = "SELECT * FROM talks WHERE user_id = :userid AND id = :talkid";
+        $stmt = $con->prepare($query);
+        $stmt->bindValue(":userid", $userid);
+        $stmt->bindValue(":talkid", $talkid);
+        $stmt->execute();
+        $talk = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if($talk){
+
+            $userId = $data['userId']??'';
+            $title = $data['title']??'';
+            $content = $data['content']??'';
+            $category = $data['category']??'';
+            $uploadedFiles = $request->getUploadedFiles();
+            if (isset($uploadedFiles['image'])) {
+                $image = $uploadedFiles['image'];
+            }
+                        
+            // Handling image upload
+            $directory = __DIR__ . '/uploads';
+            $filename = moveUploadedFile($directory, $image);            
+
+            $updateQuery = "UPDATE talks SET title = :title, content = :content, category = :category, image = :image, posted_datetime = NOW(), status = 'pending' WHERE user_id = :userid AND id = :talkid";
+            $updateStmt = $con->prepare($updateQuery);
+            $updateStmt->bindValue(":title", $title);
+            $stmt->bindValue(":content", $content);
+            $stmt->bindValue(":category", $category);
+            $stmt->bindValue(":image", $filename);
+            $updateStmt->bindValue(":userid", $userid);
+            $updateStmt->bindValue(":talkid", $talkid);
+            $updateStmt->execute();
+
+            $response->getBody()->write(json_encode(["message" => "Talk updated successfully."]));
+            return $response->withStatus(200)->withHeader('Content-Type', 'application/json');
+        } else {
+            $response->getBody()->write(json_encode(["message" => "Talk not found."]));
+            return $response->withStatus(404)->withHeader('Content-Type', 'application/json');
+        }
+    }catch(PDOexception $e){
+        $error = [
+            "message" => $e->getMessage()
+        ];
+        $response->getBody()->write(json_encode($error));
+        return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+    }finally{
+        $con = null;
+    }
+});
+
+
 ?>
