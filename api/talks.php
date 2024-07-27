@@ -41,7 +41,6 @@ $app->get('/talkList', function (Request $request, Response $response, $args) {
         $response->getBody()->write(json_encode($error));
         return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
     }
-
 });
 
 $app->put('/talks/{id}/approve', function (Request $request, Response $response, $args) {
@@ -241,7 +240,7 @@ $app->get('/talks', function (Request $request, Response $response, $args) {
     $con = $db->connect();
 
     try {
-        $query = "SELECT * FROM talks ORDER BY posted_datetime DESC";
+        $query = "SELECT * FROM talks WHERE status = 'approved' ORDER BY posted_datetime DESC ";
         $stmt = $con->query($query);
         $talks = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -362,6 +361,7 @@ $app->get('/talks/check-like/{userId}/{talkId}', function (Request $request, Res
         $db = new db();
         $con = $db->connect();
     
+        $data = $request->getParsedBody();
         try {
             $query = "SELECT COUNT(*) as count FROM likes WHERE user_id = :userId AND talk_id = :talkId";
             $stmt = $con->prepare($query);
@@ -380,6 +380,33 @@ $app->get('/talks/check-like/{userId}/{talkId}', function (Request $request, Res
             return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
         }
 });
+    
+$app->get('/talks/check-comment/{userId}/{talkId}', function (Request $request, Response $response, $args) {
+    $userId = $args['userId'];
+    $talkId = $args['talkId'];
+
+    $db = new db();
+    $con = $db->connect();
+
+    $data = $request->getParsedBody();
+    try {
+        $query = "SELECT COUNT(*) as count FROM comments WHERE user_id = :userId AND talk_id = :talkId";
+        $stmt = $con->prepare($query);
+        $stmt->bindValue("userId", $userId);
+        $stmt->bindValue("talkId", $talkId);
+        $stmt->execute();
+
+        $result = $stmt->fetch();
+        $comment = $result['count'] > 0;
+
+        $response->getBody()->write(json_encode(["comment" => $comment]));
+        return $response->withHeader('Content-Type', 'application/json');
+    } catch (PDOException $e) {
+        $error = ["message" => $e->getMessage()];
+        $response->getBody()->write(json_encode($error));
+        return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+    }
+});
 
 $app->post('/talks/comment', function (Request $request, Response $response, $args) {
         $db = new db();
@@ -390,8 +417,20 @@ $app->post('/talks/comment', function (Request $request, Response $response, $ar
             $userId = $data['userId'] ?? '';
             $talkId = $data['talkId'] ?? '';
             $comment = $data['comment'] ?? '';
+            $commentValue = $data['commentValue'] ?? '0';
             $parentId = $data['parentId'] ?? '0';
     
+            $commentquery = "UPDATE talks SET comments = :commentValue WHERE id = :id";
+            $stmt = $con->prepare($commentquery);
+            $stmt->bindValue("commentValue", $commentValue+1);
+            $stmt->bindValue("id", $talkId);
+            $stmt->execute();
+
+            $updatequery = "UPDATE comments SET child = 1 WHERE id = :id";
+            $stmt = $con->prepare($updatequery);
+            $stmt->bindValue("id", $parentId);
+            $stmt->execute();
+
             // Assuming the 'comments' table exists with the correct structure
             $query = "INSERT INTO comments (user_id, talk_id, comment_content, parent_id, posted_datetime)
                       VALUES (:user_id, :talk_id, :comment_content, :parent_id, NOW())";
@@ -424,15 +463,15 @@ $app->get('/talks/{id}/comment', function (Request $request, Response $response,
     
     try {
         // Assuming the 'comments' table exists with the correct structure
-        $query = "SELECT * FROM comments WHERE id = :id ORDER BY posted_datetime DESC";
+        $query = "SELECT * FROM comments WHERE talk_id = :id ORDER BY posted_datetime DESC";
         $stmt = $con->prepare($query);
         $stmt->bindValue(":id", $id);
 
         $stmt->execute();
-        $comment = $stmt->fetch();
+        $comments = $stmt->fetchAll();  // Fetch all comments
         
-        $response->getBody()->write(json_encode($comment));
-        return $response->withHeader('Content-Type', 'application/json')->withStatus(201);
+        $response->getBody()->write(json_encode($comments));
+        return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
 
     } catch (PDOException $e) {
         $error = [
@@ -451,7 +490,11 @@ $app->get('/talklist/{userid}', function(Request $request, Response $response, $
     $con = $db->connect();
 
     try{
-        $query = "SELECT * FROM talks WHERE user_id = :userid";
+        $query = "SELECT t.*, COUNT(c.id) as comment_count 
+                  FROM talks t
+                  LEFT JOIN comments c ON t.id = c.talk_id
+                  WHERE t.user_id = :userid
+                  GROUP BY t.id";
         $stmt = $con->prepare($query);
         $stmt -> bindValue(":userid", $userid);
         $stmt -> execute();
@@ -472,19 +515,24 @@ $app->get('/talklist/{userid}', function(Request $request, Response $response, $
     }
 });
 
-$app->put('/talks/{userid}/{talkid}', function(Request $request, Response $response, $args){
+$app->put('/talks/{userid}/{talkid}', function(Request $request, Response $response, $args) {
     $userid = $args['userid'];
     $talkid = $args['talkid'];
     $db = new db();
     $con = $db->connect();
 
     $data = $request->getParsedBody();
+    
+    // Debugging: Log the raw request body
+    error_log("Raw request body: " . json_encode($data));
+
     $title = $data['title'] ?? '';
     $content = $data['content'] ?? '';
     $category = $data['category'] ?? '';
-    
+    $responseMessage = '';
+    $status = 200;
 
-    try{
+    try {
         $query = "SELECT * FROM talks WHERE user_id = :userid AND id = :talkid";
         $stmt = $con->prepare($query);
         $stmt->bindValue(":userid", $userid);
@@ -492,47 +540,48 @@ $app->put('/talks/{userid}/{talkid}', function(Request $request, Response $respo
         $stmt->execute();
         $talk = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if($talk){
-
-            $userId = $data['userId']??'';
-            $title = $data['title']??'';
-            $content = $data['content']??'';
-            $category = $data['category']??'';
+        if ($talk) {
             $uploadedFiles = $request->getUploadedFiles();
-            if (isset($uploadedFiles['image'])) {
-                $image = $uploadedFiles['image'];
-            }
-                        
-            // Handling image upload
-            $directory = __DIR__ . '/uploads';
-            $filename = moveUploadedFile($directory, $image);            
+            $filename = null;
 
-            $updateQuery = "UPDATE talks SET title = :title, content = :content, category = :category, image = :image, posted_datetime = NOW(), status = 'pending' WHERE user_id = :userid AND id = :talkid";
+            if (isset($uploadedFiles['image']) && $uploadedFiles['image']->getError() === UPLOAD_ERR_OK) {
+                $image = $uploadedFiles['image'];
+                $directory = __DIR__ . '/uploads';
+                $filename = moveUploadedFile($directory, $image);
+                // Log filename to verify it's correct
+                error_log("Image uploaded: " . $filename);
+            }
+
+            $updateQuery = "UPDATE talks SET title = :title, content = :content, category = :category";
+            if ($filename) {
+                $updateQuery .= ", image = :image";
+            }
+            $updateQuery .= ", posted_datetime = NOW(), status = 'pending' WHERE user_id = :userid AND id = :talkid";
+
             $updateStmt = $con->prepare($updateQuery);
             $updateStmt->bindValue(":title", $title);
-            $stmt->bindValue(":content", $content);
-            $stmt->bindValue(":category", $category);
-            $stmt->bindValue(":image", $filename);
+            $updateStmt->bindValue(":content", $content);
+            $updateStmt->bindValue(":category", $category);
+            if ($filename) {
+                $updateStmt->bindValue(":image", $filename);
+            }
             $updateStmt->bindValue(":userid", $userid);
             $updateStmt->bindValue(":talkid", $talkid);
             $updateStmt->execute();
 
-            $response->getBody()->write(json_encode(["message" => "Talk updated successfully."]));
-            return $response->withStatus(200)->withHeader('Content-Type', 'application/json');
+            $responseMessage = "Talk updated successfully.";
         } else {
-            $response->getBody()->write(json_encode(["message" => "Talk not found."]));
-            return $response->withStatus(404)->withHeader('Content-Type', 'application/json');
+            $responseMessage = "Talk not found.";
+            $status = 404;
         }
-    }catch(PDOexception $e){
-        $error = [
-            "message" => $e->getMessage()
-        ];
-        $response->getBody()->write(json_encode($error));
-        return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
-    }finally{
+    } catch (PDOException $e) {
+        $responseMessage = $e->getMessage();
+        $status = 500;
+    } finally {
         $con = null;
     }
+
+    $response->getBody()->write(json_encode(["message" => $responseMessage]));
+    return $response->withStatus($status)->withHeader('Content-Type', 'application/json');
 });
-
-
 ?>
