@@ -584,4 +584,31 @@ $app->put('/talks/{userid}/{talkid}', function(Request $request, Response $respo
     $response->getBody()->write(json_encode(["message" => $responseMessage]));
     return $response->withStatus($status)->withHeader('Content-Type', 'application/json');
 });
+ 
+$app->get('/talks/liked-by/{userId}', function (Request $request, Response $response, $args) {
+    $userId = $args['userId'];
+
+    $db = new db();
+    $con = $db->connect();
+
+    try {
+        $query = "SELECT t.id, t.title, t.content 
+                  FROM likes l
+                  JOIN talks t ON l.talk_id = t.id
+                  WHERE l.user_id = :userId";
+        $stmt = $con->prepare($query);
+        $stmt->bindValue(":userId", $userId);
+        $stmt->execute();
+
+        $talks = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        $response->getBody()->write(json_encode($talks));
+        return $response->withHeader('Content-Type', 'application/json');
+    } catch (PDOException $e) {
+        $error = ["message" => $e->getMessage()];
+        $response->getBody()->write(json_encode($error));
+        return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+    }
+});
+
 ?>

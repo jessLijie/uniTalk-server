@@ -65,4 +65,44 @@ $app->get('/userCount', function (Request $request, Response $response, $args) {
 
     return $response->withHeader('Content-Type', 'application/json');
 });
+
+$app->put('/users/{id}', function (Request $request, Response $response, array $args) {
+    $userId = $args['id'];
+
+    $db = new db();
+    $con = $db->connect();
+
+    $data = $request->getParsedBody();
+
+    $username = $data['username'] ?? null;
+    $email = $data['email'] ?? null;
+    $password = $data['password'] ?? null;
+
+    // Validate data before proceeding
+    if (!$username || !$email || !$password) {
+        return $response->withStatus(400)->withJson(['error' => 'Missing required fields']);
+    }
+
+    try {
+        $query = "UPDATE users SET username = :username, email = :email, password = :password WHERE id = :id";
+        $stmt = $con->prepare($query);
+        $stmt->bindValue(':id', $userId, PDO::PARAM_INT);
+        $stmt->bindValue(':username', $username);
+        $stmt->bindValue(':email', $email);
+        $stmt->bindValue(':password', $password);
+
+        if ($stmt->execute()) {
+            return $response->withStatus(200)->withJson(['message' => 'Profile updated successfully']);
+        } else {
+            throw new PDOException('Failed to execute statement');
+        }
+    } catch (PDOException $e) {
+        console.log("Error updating user (ID: $userId): " . $e->getMessage());
+        return $response->withStatus(500)->withJson(['error' => 'Internal server error']);
+    }
+});
+
+
+
+
 ?>
